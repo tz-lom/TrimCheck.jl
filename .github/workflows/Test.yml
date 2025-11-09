@@ -13,16 +13,17 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    name: Julia ${{ matrix.version }} - ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
+        os: [ubuntu-latest, windows-latest, macOS-latest]
         version: ['1.12', 'pre']
         experimental: [false]
         include:
-        - version: '1.13'
-          experimental: true
         - version: 'nightly'
+          os: ubuntu-latest
           experimental: true
       
 
