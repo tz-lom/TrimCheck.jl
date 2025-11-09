@@ -1,0 +1,45 @@
+name: Run tests
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+# needed to allow julia-actions/cache to delete old caches that it has created
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        version: ['1.12']
+        experimental: [false]
+        include:
+        - version: 'pre'
+          experimental: true
+        - version: 'nightly'
+          experimental: true
+      
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: ${{ matrix.version }}
+          arch: x64
+      - uses: julia-actions/cache@v2
+      - uses: julia-actions/julia-buildpkg@v1
+      - uses: julia-actions/julia-runtest@v1
+        continue-on-error: ${{ matrix.experimental }}
+        with:
+          coverage: false
+      # - uses: julia-actions/julia-processcoverage@v1
+      # - name: Upload coverage reports to Codecov
+      #   uses: codecov/codecov-action@v5
+      #   env:
+      #     CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
