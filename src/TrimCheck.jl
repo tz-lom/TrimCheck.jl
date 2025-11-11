@@ -94,9 +94,12 @@ function validate(preload, signatures)
 end
 
 """
-    @check_calls [init=initialization code] [verbose=false] call, [call,...]
+    @check_calls [init=initialization code] [verbose=true] call, [call,...]
 
-Check that all calls can be fully type evaluated
+ Generates a `@testset` with tests that check whether every `call` can be fully type-inferred.
+The test is executed in a separate Julia process, which inherits the current project environment.
+`init` is the code that sets up the environment for the test in that process.
+`verbose` is passed as a parameter to `@testset`.
 """
 macro check_calls(exprs::Vararg{Expr})
     initialize = :()
