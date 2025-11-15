@@ -2,6 +2,10 @@
 
 TrimCheck.jl is a Julia package for validating code compatibility with Julia's `--trim` compiler option. The `--trim` option enables aggressive code trimming, removing unused methods and code paths to reduce binary size and improve performance. However, not all code is compatible with trimming, especially if it relies on dynamic features or type instability.
 
+![License](https://img.shields.io/github/license/tz-lom/TrimCheck.jl) ![GitHub branch status](https://img.shields.io/github/checks-status/tz-lom/TrimCheck.jl/master) ![GitHub Tag](https://img.shields.io/github/v/tag/tz-lom/TrimCheck.jl)
+[![Documentation](https://img.shields.io/badge/Documentation-blue)
+](https://tz-lom.github.io/TrimCheck.jl)
+
 ## Usage
 
     @check_calls [init=initialization code] [verbose=true] call, [call,...]
