@@ -5,6 +5,7 @@ using Pkg
 using Serialization
 using MLStyle: @match
 using Test
+using ProgressMeter
 
 export @check_calls
 
@@ -51,45 +52,62 @@ function validate_function(call::Expr)::ValidationResult #func, args::Tuple{Vara
 end
 
 struct JobRequest
-    preload::Expr
+    init::Expr
+    skip_fixes::Bool
     signatures::Vector{Expr}
 end
 
-struct JobResponse
-    results::Vector
+abstract type JobResponse end
+struct JobValidated <: JobResponse
+    result::ValidationResult
 end
+struct JobStartedValidation <: JobResponse end
+struct JobDone <: JobResponse end
 
 
-function validate(preload, signatures)
+function validate(init, signatures; skip_fixes=false, progressbar=false)::Vector{ValidationResult}
+
+    inp = Base.PipeEndpoint()
+    out = Base.PipeEndpoint()
+    err = Base.PipeEndpoint()
+
+    command = `$(Base.julia_cmd()) --project=$(Pkg.project().path) -e "using TrimCheck;TrimCheck.perform_validation()"`
+    exec = run(command, inp, out, err; wait=false)
+    serialize(exec, JobRequest(init, skip_fixes, signatures))
+
+    results = ValidationResult[]
+
+    pb = Progress(length(signatures); dt=0, desc="Trim Check")
+    idx = 0
     try
-        inp = Base.PipeEndpoint()
-        out = Base.PipeEndpoint()
-        err = Base.PipeEndpoint()
-
-        command = `$(Base.julia_cmd()) --project=$(Pkg.project().path) -e "using TrimCheck;TrimCheck.perform_validation()"`
-        exec = run(command, inp, out, err; wait=false)
-        serialize(exec, JobRequest(preload, signatures))
-        wait(exec)
-
-        if exec.exitcode != 0
-            ProcessFailedException(exec)
-        end
-
-        data = read(exec)
-
-        try
-            response = deserialize(PipeBuffer(data))
-            if !(response isa JobResponse)
-                error("Report object is of wrong type $(typeof(response)) $response")
+        while true
+            try
+                msg =
+                    if idx <= 0
+                        "Initializing..."
+                    elseif 0 < idx <= length(signatures)
+                        "Validating call: $(signatures[idx])"
+                    else
+                        "Finalizing..."
+                    end
+                update!(pb, idx, showvalues=["" => msg], force=true)
+                response = deserialize(exec)
+                if response isa JobDone
+                    return results
+                elseif response isa JobValidated
+                    push!(results, response.result)
+                    idx += 1
+                elseif response isa JobStartedValidation
+                    idx = 1
+                else
+                    error("Report object is of wrong type $(typeof(response)) $response")
+                end
+            catch e
+                error("Failed: $e")
             end
-            return response
-        catch e
-            error("Failed to deserialize $data : $(read(err, String))")
         end
-
-    catch e
-        # @warn "failed with" e stacktrace()
-        throw(e)
+    finally
+        cancel(pb, "Done", color=:green)
     end
 end
 
@@ -126,29 +144,32 @@ macro check_calls(exprs::Vararg{Expr})
 
     esc(quote
         $(Test).@testset "TrimCheck" verbose = $verbose begin
-            results = $validate($(QuoteNode(initialize)), $(calls))
+            results = $validate($(QuoteNode(initialize)), $(calls); progressbar=true)
 
             $report_tests(results)
         end
     end)
 end
 
-function perform_validation(req::JobRequest; skip_fixes=false)::JobResponse
-    Main.eval(req.preload)
-    if !skip_fixes
+function perform_validation(req::JobRequest)
+    Main.eval(req.init)
+    if req.skip_fixes
         Main.include(joinpath(Sys.BINDIR, "..", "share", "julia", "juliac", "juliac-trim-base.jl"))
         Main.include(joinpath(Sys.BINDIR, "..", "share", "julia", "juliac", "juliac-trim-stdlib.jl"))
     end
+    serialize(stdout, JobStartedValidation())
 
-    results = req.signatures .|> validate_function
-    return JobResponse(results)
+    for sig in req.signatures
+        serialize(stdout, JobValidated(validate_function(sig)))
+        sleep(2)
+    end
 end
 
 function perform_validation()
     try
         request = deserialize(stdin)
-        response = perform_validation(request)
-        serialize(stdout, response)
+        perform_validation(request)
+        serialize(stdout, JobDone())
     catch
         for (exc, bt) in current_exceptions()
             showerror(stderr, exc, bt)
@@ -158,8 +179,8 @@ function perform_validation()
 end
 
 
-function report_tests(results::JobResponse)
-    for result in results.results
+function report_tests(results::Vector)
+    for result in results
         Test.do_test(Test.Returned(isempty(result.errors), result, LineNumberNode(0)), result.call)
     end
 end
