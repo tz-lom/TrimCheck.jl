@@ -4,4 +4,4 @@
 
 ### Added
 
-- Add progress bar to visualize progress ([#2])
+- Add progress bar to visualize progress ([#4])

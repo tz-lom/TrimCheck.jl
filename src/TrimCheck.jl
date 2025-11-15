@@ -16,38 +16,42 @@ end
 
 function Base.show(io::IO, vr::ValidationResult)
     if isempty(vr.errors)
-        print(io, "Call `$(vr.call)` type checks successfully.")
+        print(io, "Call `$(vr.call)` is trim compatible.")
     else
-        print(io, "Call `$(vr.call)` failed type checking with errors:\n")
+        print(io, "Call `$(vr.call)` failed trim checking with errors:\n")
         for err in vr.errors
             print(io, err, "\n")
         end
     end
 end
 
-function validate_function(call::Expr)::ValidationResult #func, args::Tuple{Vararg{<:Type}})
-    @assert call.head == :call
-    func = Main.eval(call.args[1])
-    args = call.args[2:end] .|> Main.eval
+function validate_function(call::Expr)::ValidationResult
+    try
+        @assert call.head == :call
+        func = Main.eval(call.args[1])
+        args = call.args[2:end] .|> Main.eval
 
-    show(stderr, args)
+        show(stderr, args)
 
-    ret_types = Base.return_types(func, args)
-    @assert length(ret_types) == 1
-    ret_type = ret_types[1]
+        ret_types = Base.return_types(func, args)
+        @assert length(ret_types) == 1
+        ret_type = ret_types[1]
 
 
-    # Check suppressor code how to capture without temp file
-    mktemp() do path, io
-        redirect_stdout(io) do
-            try
-                Compiler.typeinf_ext_toplevel(Any[Core.svec(ret_type, Tuple{typeof(func),args...})], [Base.get_world_counter()], Compiler.TRIM_SAFE)
-            catch err
-                seek(io, 0)
-                return ValidationResult(call, [read(io, String)])
+        # Check suppressor code how to capture without temp file
+        mktemp() do path, io
+            redirect_stdout(io) do
+                try
+                    Compiler.typeinf_ext_toplevel(Any[Core.svec(ret_type, Tuple{typeof(func),args...})], [Base.get_world_counter()], Compiler.TRIM_SAFE)
+                catch err
+                    seek(io, 0)
+                    return ValidationResult(call, [read(io, String)])
+                end
+                return ValidationResult(call, [])
             end
-            return ValidationResult(call, [])
         end
+    catch err
+        return ValidationResult(call, ["Failed to run validation: $err"])
     end
 end
 
