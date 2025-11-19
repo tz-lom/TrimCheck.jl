@@ -12,16 +12,16 @@ using TrimCheck: validate
 @testset "validate_function" begin
 
     result = TrimCheck.validate_function(:(sin(Int)))
-    @test isempty(result.errors)
+    @test isnothing(result.error)
     @test result.call == :(sin(Int))
 
     result = TrimCheck.validate_function(:(sin(1)))
     @test result.call == :(sin(1))
-    @test length(result.errors) == 1
-    @test occursin("Failed to run validation", result.errors[1])
+    @test result.error isa ErrorException
 
     result = TrimCheck.validate_function(:(maximum(Vector{Any})))
     @test result.call == :(maximum(Vector{Any}))
-    @test length(result.errors) >= 1
-    @test occursin("unresolved call from statement", result.errors[1])
+    @test result.error isa TrimCheck.TrimVerificationErrors
+    @test result.error.errors[1].second isa TrimCheck.TrimVerifier.CallMissing
+    @test occursin("unresolved call", result.error.errors[1].second.desc)
 end
