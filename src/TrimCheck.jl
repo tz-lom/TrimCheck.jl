@@ -1,6 +1,6 @@
 module TrimCheck
 
-using Base: Compiler
+using Compiler: Compiler, TrimVerifier
 using Pkg
 using Serialization
 using MLStyle: @match
@@ -8,20 +8,62 @@ using Test
 using ProgressMeter
 
 export @check_calls
+# public(validate, ValidationResult)
+
+
+struct TrimVerificationErrors
+    errors
+    parents
+end
+
+include("show.jl")
+
 
 struct ValidationResult
     call::Expr
-    errors::Vector
+    error
 end
 
 function Base.show(io::IO, vr::ValidationResult)
-    if isempty(vr.errors)
+    if isnothing(vr.error)
         print(io, "Call `$(vr.call)` is trim compatible.")
     else
-        print(io, "Call `$(vr.call)` failed trim checking with errors:\n")
-        for err in vr.errors
-            print(io, err, "\n")
+        print(io, "Call `$(vr.call)` failed trim checking with:\n")
+        print(io, vr.error)
+    end
+end
+
+function hook_verify_typeinf_trim(call)
+
+    # Capture verify_typeinf_trim implementation to collect errors instead of printing them
+    if VERSION >= v"1.12.1"
+        code = quote
+            function verify_typeinf_trim(codeinfos::Vector{Any}, onlywarn::Bool)
+                errors, parents = get_verify_typeinf_trim(codeinfos)
+
+                if !isempty(errors)
+                    throw($TrimVerificationErrors(errors, parents))
+                end
+            end
         end
+    else
+        code = quote
+            function verify_typeinf_trim(io::IO, codeinfos::Vector{Any}, onlywarn::Bool)
+                errors, parents = get_verify_typeinf_trim(codeinfos)
+
+                if !isempty(errors)
+                    throw($TrimVerificationErrors(errors, parents))
+                end
+            end
+        end
+    end
+
+    impl = Base.eval(TrimVerifier, code)
+
+    try
+        invokelatest(call)
+    finally
+        Base.delete_method(methods(impl)[1])
     end
 end
 
@@ -31,27 +73,26 @@ function validate_function(call::Expr)::ValidationResult
         func = Main.eval(call.args[1])
         args = call.args[2:end] .|> Main.eval
 
-        show(stderr, args)
-
         ret_types = Base.return_types(func, args)
         @assert length(ret_types) == 1
         ret_type = ret_types[1]
 
 
-        # Check suppressor code how to capture without temp file
-        mktemp() do path, io
-            redirect_stdout(io) do
-                try
-                    Compiler.typeinf_ext_toplevel(Any[Core.svec(ret_type, Tuple{typeof(func),args...})], [Base.get_world_counter()], Compiler.TRIM_SAFE)
-                catch err
-                    seek(io, 0)
-                    return ValidationResult(call, [read(io, String)])
-                end
-                return ValidationResult(call, [])
+        try
+            hook_verify_typeinf_trim() do
+                Compiler.typeinf_ext_toplevel(Any[Core.svec(ret_type, Tuple{typeof(func),args...})], [Base.get_world_counter()], Compiler.TRIM_SAFE)
+            end
+        catch err
+            if err isa TrimVerificationErrors
+                return ValidationResult(call, err)
+            else
+                @warn "e" err
+                throw(err)
             end
         end
+        return ValidationResult(call, nothing)
     catch err
-        return ValidationResult(call, ["Failed to run validation: $err"])
+        return ValidationResult(call, err)
     end
 end
 
@@ -63,6 +104,7 @@ end
 
 abstract type JobResponse end
 struct JobValidated <: JobResponse
+    JobValidated(res::ValidationResult) = new(ValidationResult(res.call, isnothing(res.error) ? nothing : sprint(res.error)))
     result::ValidationResult
 end
 struct JobStartedValidation <: JobResponse end
@@ -185,7 +227,7 @@ end
 
 function report_tests(results::Vector)
     for result in results
-        Test.do_test(Test.Returned(isempty(result.errors), result, LineNumberNode(0)), result.call)
+        Test.do_test(Test.Returned(isnothing(result.error), result, LineNumberNode(0)), result.call)
     end
 end
 
