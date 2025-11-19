@@ -58,9 +58,16 @@ function hook_verify_typeinf_trim(call)
         end
     end
 
+    out = stderr
+    rd, wr = Base.redirect_stderr()
     impl = Base.eval(TrimVerifier, code)
-
     try
+        Base.redirect_stderr(out)
+        close(wr)
+        msg = read(rd, String)
+        if match(r"^WARNING: Method definition verify_typeinf_trim\(.+?\) in module Compiler at .+ overwritten in module TrimVerifier at [^\n]+\n$"s, msg) === nothing
+            error("Failed to override verify_typeinf_trim, unexpected warning: $msg")
+        end
         invokelatest(call)
     finally
         Base.delete_method(methods(impl)[1])
