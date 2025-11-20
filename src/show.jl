@@ -1,51 +1,59 @@
-# colored show for errors 
-
 using Base: StackTraces
 using .StackTraces: StackFrame
 using Core: CodeInfo, MethodInstance, CodeInstance, Method
-# using InteractiveUtils: InteractiveUtils
 
 
 # The trick is to define a special IO with custom type coloring behavior
-struct MyIO{T<:IO} <: IO
+struct ColorfullTypes{T<:IO} <: IO
     io::T
 end
-Base.pipe_writer(m::MyIO) = Base.pipe_writer(m.io)
-Base.pipe_reader(m::MyIO) = Base.pipe_reader(m.io)
-Base.getindex(m::MyIO, i) = Base.getindex(m.io, i)
-Base.haskey(m::MyIO, k) = Base.haskey(m.io, k)
-Base.get(m::MyIO, k, d) = Base.get(m.io, k, d)
-Base.keys(m::MyIO) = Base.keys(m.io)
-Base.setindex!(m::MyIO, v, k) = Base.setindex!(m.io, v, k)
+Base.pipe_writer(m::ColorfullTypes) = Base.pipe_writer(m.io)
+Base.pipe_reader(m::ColorfullTypes) = Base.pipe_reader(m.io)
+Base.getindex(m::ColorfullTypes, i) = Base.getindex(m.io, i)
+Base.haskey(m::ColorfullTypes, k) = Base.haskey(m.io, k)
+Base.get(m::ColorfullTypes, k, d) = Base.get(m.io, k, d)
+Base.keys(m::ColorfullTypes) = Base.keys(m.io)
+Base.setindex!(m::ColorfullTypes, v, k) = Base.setindex!(m.io, v, k)
 
 
-Base.read(s::MyIO, t::Type{UInt8}) = Base.read(s.io, t)
-Base.write(s::MyIO, x::UInt8) = Base.write(s.io, x)
+Base.read(s::ColorfullTypes, t::Type{UInt8}) = Base.read(s.io, t)
+Base.write(s::ColorfullTypes, x::UInt8) = Base.write(s.io, x)
 
-mio = MyIO(stdout)
+const ColorfullTypesIO = Union{<:ColorfullTypes,<:IOContext{<:ColorfullTypes}};
 
-const MyIOTypes = Union{<:MyIO,<:IOContext{<:MyIO}};
-function Base.show(io::MyIOTypes, x::Union{DataType,UnionAll,Type})
-    buffer = IOBuffer()
-    mio = MyIO(buffer)
-    ctx = IOContext(mio, io)
-    invoke(Base.show, Tuple{IO,DataType}, ctx, x)
-
-    str = String(take!(buffer))
-
-    if isconcretetype(x)
-        if x isa Union && length(Base.uniontypes(x)) > 4
-            printstyled(io, str; color=:yellow)
+function paint_type(io::IO, str, type::Type)
+    if type isa Union
+        if length(Base.uniontypes(type)) > 4
+            return printstyled(io, str; color=:yellow)
         else
-            printstyled(io, str; color=:light_green)
+            return printstyled(io, str; color=:light_green)
         end
+    elseif isconcretetype(type)
+        return printstyled(io, str; color=:light_green)
     else
-        printstyled(io, str; color=:red)
+        return printstyled(io, str; color=:red)
     end
 end
 
+function Base.show(io::ColorfullTypesIO, x::Type)
+    buffer = IOBuffer()
+    ctx = IOContext(ColorfullTypes(buffer), io)
+    invoke(Base.show, Tuple{IO,DataType}, ctx, x)
+    paint_type(io, String(take!(buffer)), x)
+end
+function Base.show_typealias(io::ColorfullTypesIO, name::GlobalRef, x::Type, env::Base.SimpleVector, wheres::Vector)
+    properx = Base.makeproper(io, x)
+    aliases, _ = Base.make_typealiases(properx)
+    alias = first(filter(a -> a[1] == name, aliases))
+    buffer = IOBuffer()
+    ctx = IOContext(ColorfullTypes(buffer), io)
+    invoke(Base.show_typealias, Tuple{IO,GlobalRef,Type,Base.SimpleVector,Vector}, ctx, name, x, env, wheres)
+    paint_type(io, String(take!(buffer)), alias[3])
+end
+
+
 # Copy-pasted code to override type coloring behavior in method signature printing
-function Base.show_tuple_as_call(out::IOContext{<:MyIO}, name::Symbol, sig::Type;
+function Base.show_tuple_as_call(out::IOContext{<:ColorfullTypes}, name::Symbol, sig::Type;
     demangle=false, kwargs=nothing, argnames=nothing,
     qualified=false, hasfirst=true)
     # print a method signature tuple for a lambda definition
@@ -55,7 +63,7 @@ function Base.show_tuple_as_call(out::IOContext{<:MyIO}, name::Symbol, sig::Type
     end
     tv = Any[]
     buf = IOBuffer()
-    io = IOContext(MyIO(buf), out)
+    io = IOContext(ColorfullTypes(buf), out)
     env_io = io
     while isa(sig, UnionAll)
         push!(tv, sig.var)
@@ -131,7 +139,7 @@ function verify_print_error(io::IO, desc::TrimVerifier.CCallableMissing, parents
 end
 
 function Base.show(io::IO, tve::TrimVerificationErrors)
-    mio = MyIO(io)
+    mio = ColorfullTypes(io)
     counts = [0, 0] # errors, warnings
 
     for err in tve.errors
