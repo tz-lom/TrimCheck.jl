@@ -6,6 +6,7 @@ using Serialization
 using MLStyle: @match
 using Test
 using ProgressMeter
+using Distributed
 
 export @check_calls
 # public(validate, ValidationResult)
@@ -65,7 +66,7 @@ function hook_verify_typeinf_trim(call)
         Base.redirect_stderr(out)
         close(wr)
         msg = read(rd, String)
-        if match(r"^WARNING: Method definition verify_typeinf_trim\(.+?\) in module Compiler at .+ overwritten in module TrimVerifier at [^\n]+\n$"s, msg) === nothing
+        if msg != "" && match(r"^WARNING: Method definition verify_typeinf_trim\(.+?\) in module Compiler at .+ overwritten in module TrimVerifier at [^\n]+\n$"s, msg) === nothing
             error("Failed to override verify_typeinf_trim, unexpected warning: $msg")
         end
         invokelatest(call)
@@ -93,7 +94,7 @@ function validate_function(call::Expr)::ValidationResult
             if err isa TrimVerificationErrors
                 return ValidationResult(call, err)
             else
-                @warn "e" err
+                # @warn "e" err
                 throw(err)
             end
         end
@@ -119,48 +120,34 @@ struct JobDone <: JobResponse end
 
 
 function validate(init, signatures; skip_fixes=false, progressbar=false)::Vector{ValidationResult}
-
-    inp = Base.PipeEndpoint()
-    out = Base.PipeEndpoint()
-    err = Base.PipeEndpoint()
-
-    command = `$(Base.julia_cmd()) --project=$(Pkg.project().path) -e "using TrimCheck;TrimCheck.perform_validation()"`
-    exec = run(command, inp, out, err; wait=false)
-    serialize(exec, JobRequest(init, skip_fixes, signatures))
-
-    results = ValidationResult[]
-
     pb = Progress(length(signatures); dt=0, desc="Trim Check")
-    idx = 0
+    update!(pb, 0, showvalues=["" => "initializing..."], force=true)
+    results = ValidationResult[]
+    wid = addprocs(1)[1]
+
     try
-        while true
+        fetch(@spawnat wid Main.eval(:(using TrimCheck)))
+        fetch(@spawnat wid TrimCheck.init_validation(init, skip_fixes))
+        for (idx, signature) in enumerate(signatures)
             try
-                msg =
-                    if idx <= 0
-                        "Initializing..."
-                    elseif 0 < idx <= length(signatures)
-                        "Validating call: $(signatures[idx])"
-                    else
-                        "Finalizing..."
-                    end
-                update!(pb, idx, showvalues=["" => msg], force=true)
-                response = deserialize(exec)
-                if response isa JobDone
-                    return results
-                elseif response isa JobValidated
-                    push!(results, response.result)
-                    idx += 1
-                elseif response isa JobStartedValidation
-                    idx = 1
-                else
-                    error("Report object is of wrong type $(typeof(response)) $response")
-                end
+                update!(pb, idx, showvalues=["" => "Validating call: $signature"], force=true)
+
+                result = @spawnat wid TrimCheck.perform_validation(signature)
+                append!(results, fetch(result))
+
             catch e
-                error("Failed: $e")
+                @debug "Validation error" e
+                append!(results, ValidationResult(signature, e))
             end
         end
+        return results
     finally
-        cancel(pb, "Done", color=:green)
+        if isempty(current_exceptions())
+            cancel(pb, "Done ✓", color=:green)
+        else
+            cancel(pb, "Failed ✗", color=:red)
+        end
+        rmprocs(wid)
     end
 end
 
@@ -204,31 +191,17 @@ macro check_calls(exprs::Vararg{Expr})
     end)
 end
 
-function perform_validation(req::JobRequest)
-    Main.eval(req.init)
-    if req.skip_fixes
+function init_validation(init::Expr, skip_fixes::Bool)
+    Main.eval(init)
+    if skip_fixes
         Main.include(joinpath(Sys.BINDIR, "..", "share", "julia", "juliac", "juliac-trim-base.jl"))
         Main.include(joinpath(Sys.BINDIR, "..", "share", "julia", "juliac", "juliac-trim-stdlib.jl"))
     end
-    serialize(stdout, JobStartedValidation())
-
-    for sig in req.signatures
-        serialize(stdout, JobValidated(validate_function(sig)))
-        sleep(2)
-    end
 end
 
-function perform_validation()
-    try
-        request = deserialize(stdin)
-        perform_validation(request)
-        serialize(stdout, JobDone())
-    catch
-        for (exc, bt) in current_exceptions()
-            showerror(stderr, exc, bt)
-            println(stderr)
-        end
-    end
+function perform_validation(call::Expr; kwargs...)
+    result = validate_function(call; kwargs...)
+    return ValidationResult(result.call, isnothing(result.error) ? nothing : sprint(show, result.error; context=:color => get(stdout, :color, false)))
 end
 
 
