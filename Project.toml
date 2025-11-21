@@ -5,6 +5,7 @@ authors = ["Yury Nuzhdin <nuzhdin.urii@gmail.com>"]
 
 [deps]
 Compiler = "807dbc54-b67e-4c79-8afb-eafe4df6f2e1"
+Distributed = "8ba89e20-285c-5b6f-9357-94700520ee1b"
 MLStyle = "d8e11817-5142-5d16-987a-aa16d5891078"
 Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
 ProgressMeter = "92933f4c-e287-5a05-a399-4b506db050ca"
@@ -13,6 +14,7 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [compat]
 Compiler = "0.1.1"
+Distributed = "1.11.0"
 MLStyle = "0.4.17"
 Pkg = "1"
 ProgressMeter = "1.11.0"
