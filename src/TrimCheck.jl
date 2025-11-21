@@ -126,18 +126,18 @@ function validate(init, signatures; skip_fixes=false, progressbar=false)::Vector
     wid = addprocs(1)[1]
 
     try
-        fetch(@spawnat wid Main.eval(:(using TrimCheck)))
-        fetch(@spawnat wid TrimCheck.init_validation(init, skip_fixes))
+        remotecall_eval(Main, wid, :(using TrimCheck))
+        fetch(remotecall(TrimCheck.init_validation, wid, init, skip_fixes))
         for (idx, signature) in enumerate(signatures)
             try
                 update!(pb, idx, showvalues=["" => "Validating call: $signature"], force=true)
 
-                result = @spawnat wid TrimCheck.perform_validation(signature)
-                append!(results, fetch(result))
+                result = remotecall(TrimCheck.perform_validation, wid, signature)
+                push!(results, fetch(result))
 
             catch e
                 @debug "Validation error" e
-                append!(results, ValidationResult(signature, e))
+                push!(results, ValidationResult(signature, e))
             end
         end
         return results
