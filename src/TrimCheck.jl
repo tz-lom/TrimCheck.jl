@@ -199,9 +199,9 @@ function init_validation(init::Expr, skip_fixes::Bool)
     end
 end
 
-function perform_validation(call::Expr; kwargs...)
+function perform_validation(call::Expr; colors=true, kwargs...)
     result = validate_function(call; kwargs...)
-    return ValidationResult(result.call, isnothing(result.error) ? nothing : sprint(show, result.error; context=:color => get(stdout, :color, false)))
+    return ValidationResult(result.call, isnothing(result.error) ? nothing : sprint(show, result.error; context=:color => colors))
 end
 
 
