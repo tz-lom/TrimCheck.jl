@@ -119,7 +119,7 @@ struct JobStartedValidation <: JobResponse end
 struct JobDone <: JobResponse end
 
 
-function validate(init, signatures; skip_fixes=false, progressbar=false)::Vector{ValidationResult}
+function validate(init, signatures; skip_fixes=false, progressbar=false, kwargs...)::Vector{ValidationResult}
     pb = Progress(length(signatures); dt=0, desc="Trim Check")
     update!(pb, 0, showvalues=["" => "initializing..."], force=true)
     results = ValidationResult[]
@@ -132,7 +132,7 @@ function validate(init, signatures; skip_fixes=false, progressbar=false)::Vector
             try
                 update!(pb, idx, showvalues=["" => "Validating call: $signature"], force=true)
 
-                result = remotecall(TrimCheck.perform_validation, wid, signature)
+                result = remotecall(TrimCheck.perform_validation, wid, signature; kwargs...)
                 push!(results, fetch(result))
 
             catch e

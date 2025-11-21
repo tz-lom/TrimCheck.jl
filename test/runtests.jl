@@ -37,4 +37,10 @@ using TrimCheck: validate
         foo(String),
         # foo(TypeUnstable),
         foo(TypeStable))
+
+    @testset "validation macro (indirectly)" begin
+        results = TrimCheck.validate(:(), [:(maximum(Vector{Any}))]; colors=true)
+        @test length(results) == 1
+        @test contains(results[1].error, "\e[31m") # check for colored output
+    end
 end
