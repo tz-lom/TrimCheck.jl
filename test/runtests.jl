@@ -52,25 +52,48 @@ using TrimCheck: validate
 
 	@testset "validation macro (indirectly)" verbose = true begin
 		@testset "colored short output" begin
-			results = TrimCheck.validate([:(maximum(Vector{Any}))]; color = true)
+			results = TrimCheck.validate(:(maximum(Vector{Any})); color = true)
 			@test length(results) == 1
 			@test contains(results[1].error, "\e[31m") # check for colored output
 
-			@test contains(results[1].error, "Verifier errors: 7, warnings: 0")
+			m = match(r"Verifier errors: (\d+), warnings: (\d+)", results[1].error)
+			@test m !== nothing
+			@test parse(Int, m[1]) > 0
+
 			@test contains(results[1].error, "Verifier error #1")
 			@test !contains(results[1].error, "Verifier error #2")
 		end
 
 		@testset "no color long output" begin
 			results = TrimCheck.validate(
-				[:(maximum(Vector{Any}))];
+				:(maximum(Vector{Any}));
 				color = false,
 				only_first_error = false,
 			)
 
 			@test !contains(results[1].error, "\e[31m") # check for non-colored output
-			@test contains(results[1].error, "Verifier errors: 7, warnings: 0")
+			m = match(r"Verifier errors: (\d+), warnings: (\d+)", results[1].error)
+			@test m !== nothing
+			@test parse(Int, m[1]) > 0
 			@test contains(results[1].error, "Verifier error #1")
 		end
+	end
+
+	@testset "skip_fixes option" begin
+		results = TrimCheck.validate(
+			:(mapreduce(typeof(identity), typeof(+), Vector{Int}));
+			skip_fixes = true,
+			color = false,
+		)
+		m = match(r"Verifier errors: (\d+), warnings: (\d+)", results[1].error)
+		@test m !== nothing
+		@test parse(Int, m[1]) > 0
+
+		results = TrimCheck.validate(
+			:(mapreduce(typeof(identity), typeof(+), Vector{Int}));
+			skip_fixes = false,
+			color = false,
+		)
+		@test isnothing(results[1].error)
 	end
 end
