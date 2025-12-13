@@ -19,7 +19,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macOS-latest]
-        version: ['1.12', 'pre']
+        version: ['1.12', '1.12.0', '1.12.1','1.12.2', 'pre']
         experimental: [false]
         include:
         - version: 'nightly'

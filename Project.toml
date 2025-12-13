@@ -1,6 +1,6 @@
 name = "TrimCheck"
 uuid = "f940d764-e397-4179-96e0-76ce55cfe39b"
-version = "0.1.2"
+version = "0.1.3"
 authors = ["Yury Nuzhdin <nuzhdin.urii@gmail.com>"]
 
 [deps]
