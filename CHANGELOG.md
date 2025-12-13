@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.3]
+
+### Fixed
+
+- Inverted logic in `apply_fixes`
+- Problems with Julia 1.12.* versions
+- Compatibility with different Compiler implementations
+
 ## [0.1.2]
 
 ### Added
