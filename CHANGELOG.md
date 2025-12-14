@@ -8,6 +8,10 @@
 - Problems with Julia 1.12.* versions
 - Compatibility with different Compiler implementations
 
+### Added
+
+- Configuration option for how many errors and warnings shall be printed
+
 ## [0.1.2]
 
 ### Added
