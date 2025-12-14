@@ -14,16 +14,16 @@ public validate
 struct TrimVerificationErrors
 	errors::Any
 	parents::Any
-	only_first_error::Bool
+	warnings_limit::Int
+	errors_limit::Int
 
-	TrimVerificationErrors(errors, parents; only_first_error::Bool = false) =
-		new(errors, parents, only_first_error)
+	TrimVerificationErrors(errors, parents;) =
+		new(errors, parents, typemax(Int), typemax(Int))
 	TrimVerificationErrors(
 		prev::TrimVerificationErrors;
-		only_first_error::Union{Missing,Bool} = missing,
-	) =
-		ismissing(only_first_error) ? prev :
-		new(prev.errors, prev.parents, only_first_error)
+		warnings_limit::Int,
+		errors_limit::Int,
+	) = new(prev.errors, prev.parents, warnings_limit, errors_limit)
 end
 
 struct ValidationResult
@@ -70,7 +70,11 @@ function hook_verify_typeinf_trim(call)
 	end
 end
 
-function validate_function(call::Expr; only_first_error::Bool = true)::ValidationResult
+function validate_function(
+	call::Expr;
+	warnings_limit::Int = typemax(Int),
+	errors_limit::Int = typemax(Int),
+)::ValidationResult
 	try
 		@assert call.head == :call
 		func = Main.eval(call.args[1])
@@ -90,7 +94,10 @@ function validate_function(call::Expr; only_first_error::Bool = true)::Validatio
 			end
 		catch err
 			if err isa TrimVerificationErrors
-				return ValidationResult(call, TrimVerificationErrors(err; only_first_error))
+				return ValidationResult(
+					call,
+					TrimVerificationErrors(err; warnings_limit, errors_limit),
+				)
 			else
 				# @warn "e" err
 				throw(err)
@@ -178,14 +185,15 @@ function validate(
 end
 
 """
-	@validate call, [call,...] [init=initialization code] [verbose=true] [color=true] [only_first_error=true] [progressbar=true] [skip_fixes=false]
+	@validate call, [call,...] [init=initialization code] [verbose=true] [color=true] [warnings_limit=1] [errors_limit=1] [progressbar=true] [skip_fixes=false]
 
 Generates a `@testset` with tests that check whether every `call` can be fully type-inferred.
 The test is executed in a separate Julia process, which inherits the current project environment.
 `init` is the code that sets up the environment for the test in that process.
 `verbose` is passed as a parameter to `@testset`.
 `color` controls whether error messages are colorized.
-`only_first_error` if set to true, only the first error found in each call is reported in details.
+`warnings_limit` controls the maximum number of warnings reported in detail for each call. Use Inf for all.
+`errors_limit` controls the maximum number of errors reported in detail for each call. Use Inf for all.
 `progressbar` controls whether a progress bar is shown during validation. By default is enabled unless running in CI environment.
 `skip_fixes` controls whether fixes are skipped during validation. By default is false.
 """
@@ -194,48 +202,53 @@ macro validate(exprs::Vararg{Expr})
 	verbose = true
 	calls = Expr[]
 	color = true
-	only_first_error = true
 	progress_bar = !haskey(ENV, "CI")
 	skip_fixes = false
+	warnings_limit = 1
+	errors_limit = 1
 
 	for expr in exprs
 		@match expr begin
-			:(verbose = true) => begin
-				verbose = true
+			:(verbose = $b) => begin
+				@assert b isa Bool "verbose must be a Bool"
+				verbose = b
 			end
-			:(verbose = false) => begin
-				verbose = false
+			:(color = $b) => begin
+				@assert b isa Bool "color must be a Bool"
+				color = b
 			end
-			:(color = true) => begin
-				color = true
+			:(warnings_limit = $n) => begin
+				if n in (:all, :Inf)
+					warnings_limit = typemax(Int)
+					continue
+				end
+				@assert n isa Integer "warnings_limit must be an Integer"
+				warnings_limit = n
 			end
-			:(color = false) => begin
-				color = false
+			:(errors_limit = $n) => begin
+				if n in (:all, :Inf)
+					errors_limit = typemax(Int)
+					continue
+				end
+				@assert n isa Integer "errors_limit must be an Integer"
+				errors_limit = n
 			end
-			:(only_first_error = true) => begin
-				only_first_error = true
+			:(progressbar = $b) => begin
+				@assert b isa Bool "progressbar must be a Bool"
+				progress_bar = b
 			end
-			:(only_first_error = false) => begin
-				only_first_error = false
-			end
-			:(progressbar = true) => begin
-				progress_bar = true
-			end
-			:(progressbar = false) => begin
-				progress_bar = false
-			end
-			:(skip_fixes = true) => begin
-				skip_fixes = true
-			end
-			:(skip_fixes = false) => begin
-				skip_fixes = false
-			end
-			Expr(:call, _...) => begin
-				push!(calls, expr)
+			:(skip_fixes = $b) => begin
+				@assert b isa Bool "skip_fixes must be a Bool"
+				skip_fixes = b
 			end
 			:(init = $blk) => begin
+				@assert blk isa Expr "init must be an expression"
 				@assert initialize == :() "Only one initialization expression allowed $initialize vs $blk"
 				initialize = blk
+			end
+			_ => begin
+				@assert expr isa Expr "Call must be an expression"
+				push!(calls, expr)
 			end
 		end
 	end
@@ -248,7 +261,8 @@ macro validate(exprs::Vararg{Expr})
 					init = $(QuoteNode(initialize)),
 					progressbar = $progress_bar,
 					color = $color,
-					only_first_error = $only_first_error,
+					warnings_limit = $warnings_limit,
+					errors_limit = $errors_limit,
 					skip_fixes = $skip_fixes,
 				)
 

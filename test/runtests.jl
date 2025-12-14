@@ -2,7 +2,39 @@ using Test
 using TrimCheck
 using TrimCheck: validate
 
-@testset "" verbose = true begin
+@testset "TrimCheck" verbose = true begin
+	@testset "show trimming errors correcty" begin
+		err = TrimCheck.TrimVerificationErrors(
+			[
+				(false, TrimCheck.TrimVerifier.CCallableMissing("rt", "sig", "error 1")),
+				(true, TrimCheck.TrimVerifier.CCallableMissing("rt", "sig", "warning 1")),
+				(true, TrimCheck.TrimVerifier.CCallableMissing("rt", "sig", "warning 2")),
+				(false, TrimCheck.TrimVerifier.CCallableMissing("rt", "sig", "error 2")),
+				(false, TrimCheck.TrimVerifier.CCallableMissing("rt", "sig", "error 3")),
+				(true, TrimCheck.TrimVerifier.CCallableMissing("rt", "sig", "warning 3")),
+			],
+			TrimCheck.TrimVerifier.ParentMap(),
+		)
+		str = sprint(show, err)
+
+		@test contains(str, "Verifier errors: 3, warnings: 3")
+		for n = 1:3
+			@test contains(str, "Verifier error #$n: error $n")
+			@test contains(str, "Verifier warning #$n: warning $n")
+		end
+
+		err = TrimCheck.TrimVerificationErrors(err, warnings_limit = 2, errors_limit = 2)
+		str = sprint(show, err)
+
+		@test contains(str, "Verifier errors: 3, warnings: 3")
+		for n = 1:2
+			@test contains(str, "Verifier error #$n: error $n")
+			@test contains(str, "Verifier warning #$n: warning $n")
+		end
+		@test !contains(str, "Verifier error #3: error 3")
+		@test !contains(str, "Verifier warning #3: warning 3")
+	end
+
 	@testset "validate_function" begin
 		result = TrimCheck.validate_function(:(sin(Int)))
 		@test isnothing(result.error)
@@ -52,7 +84,8 @@ using TrimCheck: validate
 
 	@testset "validation macro (indirectly)" verbose = true begin
 		@testset "colored short output" begin
-			results = TrimCheck.validate(:(maximum(Vector{Any})); color = true)
+			results =
+				TrimCheck.validate(:(maximum(Vector{Any})); color = true, errors_limit = 1)
 			@test length(results) == 1
 			@test contains(results[1].error, "\e[31m") # check for colored output
 
@@ -68,14 +101,17 @@ using TrimCheck: validate
 			results = TrimCheck.validate(
 				:(maximum(Vector{Any}));
 				color = false,
-				only_first_error = false,
+				errors_limit = 10,
 			)
 
 			@test !contains(results[1].error, "\e[31m") # check for non-colored output
 			m = match(r"Verifier errors: (\d+), warnings: (\d+)", results[1].error)
 			@test m !== nothing
-			@test parse(Int, m[1]) > 0
-			@test contains(results[1].error, "Verifier error #1")
+			errors = parse(Int, m[1])
+			@test errors > 1
+			for i = 1:errors
+				@test contains(results[1].error, "Verifier error #$i")
+			end
 		end
 	end
 
