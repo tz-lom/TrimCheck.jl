@@ -49,6 +49,13 @@ using TrimCheck: validate
 		@test result.error isa TrimCheck.TrimVerificationErrors
 		@test result.error.errors[1].second isa TrimCheck.TrimVerifier.CallMissing
 		@test occursin("unresolved call", result.error.errors[1].second.desc)
+
+		result = TrimCheck.validate_function(:(cd))
+		@test result.error isa AssertionError
+
+		result = TrimCheck.validate_function(:(pwd))
+		@test result.call == :(pwd)
+		@test isnothing(result.error)
 	end
 
 	@testset "colored types" begin
@@ -78,7 +85,8 @@ using TrimCheck: validate
 			foo(Int32),
 			foo(String),
 			# foo(TypeUnstable),
-			foo(TypeStable)
+			foo(TypeStable),
+			type_defined
 		)
 	end
 

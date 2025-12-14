@@ -14,6 +14,10 @@ end
 Base.show(io::IO, x::TypeStable) = print(io, x.x)
 
 
+function type_defined(x::Int)
+    return x+3
+end
+
 function @main(args)
     foo(TypeStable(42))
     return 0

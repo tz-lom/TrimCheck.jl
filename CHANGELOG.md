@@ -11,6 +11,7 @@
 ### Added
 
 - Configuration option for how many errors and warnings shall be printed
+- Functions with single implementation can be specified by name only (without signature)
 
 ## [0.1.2]
 
