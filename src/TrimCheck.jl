@@ -11,6 +11,8 @@ using Distributed
 export @validate
 public validate
 
+const MethodDefinition = Union{Expr,Symbol}
+
 struct TrimVerificationErrors
 	errors::Any
 	parents::Any
@@ -27,7 +29,7 @@ struct TrimVerificationErrors
 end
 
 struct ValidationResult
-	call::Expr
+	call::MethodDefinition
 	error::Any
 end
 
@@ -71,14 +73,21 @@ function hook_verify_typeinf_trim(call)
 end
 
 function validate_function(
-	call::Expr;
+	call::MethodDefinition;
 	warnings_limit::Int = typemax(Int),
 	errors_limit::Int = typemax(Int),
 )::ValidationResult
 	try
-		@assert call.head == :call
-		func = Main.eval(call.args[1])
-		args = call.args[2:end] .|> Main.eval
+		if call isa Expr && call.head == :call
+			func = Main.eval(call.args[1])
+			args = call.args[2:end] .|> Main.eval
+		else
+			func = Main.eval(call)
+			@assert isa(func, Function) "`$call` does not refer to a function"
+			meth = methods(func)
+			@assert length(meth) == 1 "Only single method functions can derive their signature from function name"
+			args = meth[1].sig.parameters[2:end]
+		end
 
 		ret_types = Base.return_types(func, args)
 		@assert length(ret_types) == 1
@@ -112,13 +121,17 @@ end
 struct JobRequest
 	init::Expr
 	skip_fixes::Bool
-	signatures::Vector{Expr}
+	signatures::Vector{MethodDefinition}
 end
 
 abstract type JobResponse end
 struct JobValidated <: JobResponse
-	JobValidated(res::ValidationResult) =
-		new(ValidationResult(res.call, isnothing(res.error) ? nothing : sprint(res.error)))
+	JobValidated(res::ValidationResult) = new(
+		ValidationResult(
+			sprint(res.call),
+			isnothing(res.error) ? nothing : sprint(res.error),
+		),
+	)
 	result::ValidationResult
 end
 struct JobStartedValidation <: JobResponse end
@@ -161,7 +174,7 @@ function validate(
 				push!(results, fetch(result))
 
 			catch e
-				@debug "Validation error" e
+				@debug "Valida= TrimCheck.vation error" e
 				push!(results, ValidationResult(signature, e))
 			end
 		end
@@ -188,6 +201,7 @@ end
 	@validate call, [call,...] [init=initialization code] [verbose=true] [color=true] [warnings_limit=1] [errors_limit=1] [progressbar=true] [skip_fixes=false]
 
 Generates a `@testset` with tests that check whether every `call` can be fully type-inferred.
+`call` is either a method name if method have single definition or a function call expression with arguments specifying types (e.g. `foo(Int, String)`).
 The test is executed in a separate Julia process, which inherits the current project environment.
 `init` is the code that sets up the environment for the test in that process.
 `verbose` is passed as a parameter to `@testset`.
@@ -197,10 +211,10 @@ The test is executed in a separate Julia process, which inherits the current pro
 `progressbar` controls whether a progress bar is shown during validation. By default is enabled unless running in CI environment.
 `skip_fixes` controls whether fixes are skipped during validation. By default is false.
 """
-macro validate(exprs::Vararg{Expr})
+macro validate(exprs...)
 	initialize = :()
 	verbose = true
-	calls = Expr[]
+	calls = MethodDefinition[]
 	color = true
 	progress_bar = !haskey(ENV, "CI")
 	skip_fixes = false
@@ -247,7 +261,7 @@ macro validate(exprs::Vararg{Expr})
 				initialize = blk
 			end
 			_ => begin
-				@assert expr isa Expr "Call must be an expression"
+				@assert expr isa MethodDefinition "Function call must be an expression or symbol"
 				push!(calls, expr)
 			end
 		end
@@ -284,7 +298,7 @@ function init_validation(init::Expr, skip_fixes::Bool)
 	end
 end
 
-function perform_validation(call::Expr; color = true, kwargs...)
+function perform_validation(call::MethodDefinition; color = true, kwargs...)
 	result = validate_function(call; kwargs...)
 	return ValidationResult(
 		result.call,
