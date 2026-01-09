@@ -72,11 +72,22 @@ function hook_verify_typeinf_trim(call)
 	end
 end
 
+function warn_julia_options()
+	if Base.JLOptions().can_inline == 0 && Base.JLOptions().worker == 0
+		printstyled(
+			stderr,
+			"TrimCheck validation requires inlining to be enabled. Validation results may be inaccurate.\n",
+			color = :yellow,
+		)
+	end
+end
+
 function validate_function(
 	call::MethodDefinition;
 	warnings_limit::Int = typemax(Int),
 	errors_limit::Int = typemax(Int),
 )::ValidationResult
+	warn_julia_options()
 	try
 		if call isa Expr && call.head == :call
 			func = Main.eval(call.args[1])
@@ -154,6 +165,7 @@ function validate(
 	progressbar = false,
 	kwargs...,
 )::Vector{ValidationResult}
+	warn_julia_options()
 	pb = Progress(length(signatures); dt = 0, desc = "Trim Check", enabled = progressbar)
 	update!(pb, 0; showvalues = ["" => "initializing..."], force = true)
 	results = ValidationResult[]
