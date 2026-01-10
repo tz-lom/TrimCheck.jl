@@ -322,10 +322,12 @@ end
 
 function report_tests(results::Vector)
 	for result in results
-		Test.do_test(
-			Test.Returned(isnothing(result.error), result, LineNumberNode(0)),
-			result.call,
-		)
+		Test.@testset "Validating call: $(result.call)" begin
+			Test.do_test(
+				Test.Returned(isnothing(result.error), result, LineNumberNode(0)),
+				result.call,
+			)
+		end
 	end
 end
 
