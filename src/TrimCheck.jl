@@ -308,6 +308,7 @@ function init_validation(init::Expr, skip_fixes::Bool)
 			joinpath(Sys.BINDIR, "..", "share", "julia", "juliac", "juliac-trim-stdlib.jl"),
 		)
 	end
+	return nothing
 end
 
 function perform_validation(call::MethodDefinition; color = true, kwargs...)
