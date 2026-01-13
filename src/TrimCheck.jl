@@ -210,7 +210,7 @@ function validate(
 end
 
 """
-	@validate call, [call,...] [init=initialization code] [verbose=true] [color=true] [warnings_limit=1] [errors_limit=1] [progressbar=true] [skip_fixes=false]
+	@validate(call..., [init=initialization code], [verbose=true], [color=true], [warnings_limit=1], [errors_limit=1], [progressbar=true], [skip_fixes=false])
 
 Generates a `@testset` with tests that check whether every `call` can be fully type-inferred.
 `call` is either a method name if method have single definition or a function call expression with arguments specifying types (e.g. `foo(Int, String)`).
