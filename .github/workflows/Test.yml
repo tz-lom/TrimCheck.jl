@@ -5,6 +5,7 @@ on:
     branches:
       - master
   pull_request:
+  workflow_dispatch: 
 
 # needed to allow julia-actions/cache to delete old caches that it has created
 permissions:
@@ -19,7 +20,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macOS-latest]
-        version: ['1.12', '1.12.0', '1.12.1','1.12.2']
+        version: ['1.12', '1.12.0', '1.12.1','1.12.2', '1.12.3']
         experimental: [false]
         include:
         - version: 'pre'
@@ -28,7 +29,9 @@ jobs:
         - version: 'nightly'
           os: ubuntu-latest
           experimental: true
-      
+        - version: '1.13'
+          os: ubuntu-latest
+          experimental: true
 
     steps:
       - uses: actions/checkout@v6
@@ -36,6 +39,7 @@ jobs:
         with:
           version: ${{ matrix.version }}
           arch: x64
+          include-all-prereleases: true
       - uses: julia-actions/cache@v2
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1

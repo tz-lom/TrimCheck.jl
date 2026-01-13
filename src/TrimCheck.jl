@@ -72,11 +72,22 @@ function hook_verify_typeinf_trim(call)
 	end
 end
 
+function warn_julia_options()
+	if Base.JLOptions().can_inline == 0 && Base.JLOptions().worker == 0
+		printstyled(
+			stderr,
+			"TrimCheck validation requires inlining to be enabled. Validation results may be inaccurate.\n",
+			color = :yellow,
+		)
+	end
+end
+
 function validate_function(
 	call::MethodDefinition;
 	warnings_limit::Int = typemax(Int),
 	errors_limit::Int = typemax(Int),
 )::ValidationResult
+	warn_julia_options()
 	try
 		if call isa Expr && call.head == :call
 			func = Main.eval(call.args[1])
@@ -154,6 +165,7 @@ function validate(
 	progressbar = false,
 	kwargs...,
 )::Vector{ValidationResult}
+	warn_julia_options()
 	pb = Progress(length(signatures); dt = 0, desc = "Trim Check", enabled = progressbar)
 	update!(pb, 0; showvalues = ["" => "initializing..."], force = true)
 	results = ValidationResult[]
@@ -198,7 +210,7 @@ function validate(
 end
 
 """
-	@validate call, [call,...] [init=initialization code] [verbose=true] [color=true] [warnings_limit=1] [errors_limit=1] [progressbar=true] [skip_fixes=false]
+	@validate(call..., [init=initialization code], [verbose=true], [color=true], [warnings_limit=1], [errors_limit=1], [progressbar=true], [skip_fixes=false])
 
 Generates a `@testset` with tests that check whether every `call` can be fully type-inferred.
 `call` is either a method name if method have single definition or a function call expression with arguments specifying types (e.g. `foo(Int, String)`).
@@ -296,6 +308,7 @@ function init_validation(init::Expr, skip_fixes::Bool)
 			joinpath(Sys.BINDIR, "..", "share", "julia", "juliac", "juliac-trim-stdlib.jl"),
 		)
 	end
+	return nothing
 end
 
 function perform_validation(call::MethodDefinition; color = true, kwargs...)
@@ -309,10 +322,12 @@ end
 
 function report_tests(results::Vector)
 	for result in results
-		Test.do_test(
-			Test.Returned(isnothing(result.error), result, LineNumberNode(0)),
-			result.call,
-		)
+		Test.@testset "Validating call: $(result.call)" begin
+			Test.do_test(
+				Test.Returned(isnothing(result.error), result, LineNumberNode(0)),
+				result.call,
+			)
+		end
 	end
 end
 

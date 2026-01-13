@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.4]
+
+### Fixed
+
+- Can't run outside of VSCode
+
+### Added
+
+- Show warning if inlining is disabled
+
 ## [0.1.3]
 
 ### Fixed

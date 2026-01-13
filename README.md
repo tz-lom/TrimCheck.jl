@@ -6,9 +6,12 @@ TrimCheck.jl is a Julia package for validating code compatibility with Julia's `
 [![Documentation](https://img.shields.io/badge/Documentation-blue)
 ](https://tz-lom.github.io/TrimCheck.jl)
 
+
+![Demo 1](https://github.com/tz-lom/TrimCheck.jl/blob/gh-pages/demos/demo1.gif?raw=true)
+
 ## Usage
 
-    @validate [init=initialization code] call, [call,...]
+    @validate(call..., [init=initialization code])
 
 - Generates a `@testset` with tests that check whether every `call` can be fully type-inferred.
 - The test is executed in a separate Julia process, which inherits the current project environment.
@@ -46,7 +49,7 @@ This is best suited for test code, as it declares a `@testset` from the `Test` p
 ```julia
 @validate(init = begin              # 'init' is executed before the test
         using YourPackage
-    end, verbose = true,               # 'verbose' is true by default
+    end,
     YourPackage.foo(Int32),            # function signatures to test
     YourPackage.foo(String),
     YourPackage.foo(TypeUnstable),     # this function call will be reported as problematic
