@@ -1,6 +1,7 @@
 module TrimCheck
 
 using Compiler: Compiler, TrimVerifier
+using JuliaC: JuliaC
 using Pkg
 using Serialization
 using MLStyle: @match
@@ -72,6 +73,26 @@ function hook_verify_typeinf_trim(call)
 	end
 end
 
+function juliac_scripts_dir()
+	# Julia ships juliac's trim fix-ups in `share/julia/juliac` up to 1.12; from 1.13
+	# on they are part of the JuliaC package instead.
+	intree = joinpath(Sys.BINDIR, "..", "share", "julia", "juliac")
+	return isdir(intree) ? intree : String(JuliaC.SCRIPTS_DIR)
+end
+
+function typeinf_trim_safe(methods::Vector{Any}, worlds::Vector{UInt})
+	@static if hasmethod(
+		Compiler.typeinf_ext_toplevel,
+		Tuple{Vector{Any},Vector{UInt},UInt8,Bool},
+	)
+		# `external_linkage = false`: linking against code already compiled into the
+		# system image would hide those calls from the trim verifier.
+		Compiler.typeinf_ext_toplevel(methods, worlds, Compiler.TRIM_SAFE, false)
+	else
+		Compiler.typeinf_ext_toplevel(methods, worlds, Compiler.TRIM_SAFE)
+	end
+end
+
 function warn_julia_options()
 	if Base.JLOptions().can_inline == 0 && Base.JLOptions().worker == 0
 		printstyled(
@@ -106,10 +127,9 @@ function validate_function(
 
 		try
 			hook_verify_typeinf_trim() do
-				Compiler.typeinf_ext_toplevel(
+				typeinf_trim_safe(
 					Any[Core.svec(ret_type, Tuple{typeof(func),args...})],
 					[Base.get_world_counter()],
-					Compiler.TRIM_SAFE,
 				)
 			end
 		catch err
@@ -301,12 +321,8 @@ end
 function init_validation(init::Expr, skip_fixes::Bool)
 	Main.eval(init)
 	if ! skip_fixes
-		Main.include(
-			joinpath(Sys.BINDIR, "..", "share", "julia", "juliac", "juliac-trim-base.jl"),
-		)
-		Main.include(
-			joinpath(Sys.BINDIR, "..", "share", "julia", "juliac", "juliac-trim-stdlib.jl"),
-		)
+		Main.include(joinpath(juliac_scripts_dir(), "juliac-trim-base.jl"))
+		Main.include(joinpath(juliac_scripts_dir(), "juliac-trim-stdlib.jl"))
 	end
 	return nothing
 end

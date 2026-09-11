@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.5]
+
+### Fixed
+
+- Support Julia 1.13: `Compiler.typeinf_ext_toplevel` takes an `external_linkage` argument
+- Locate juliac's trim fix-up scripts in the JuliaC package, which is where Julia 1.13 ships them
+
 ## [0.1.4]
 
 ### Fixed
