@@ -1,6 +1,6 @@
 
 struct TypeUnstable
-    x
+    x::Any
 end
 
 struct TypeStable
@@ -12,7 +12,6 @@ function foo(x)
 end
 
 Base.show(io::IO, x::TypeStable) = print(io, x.x)
-
 
 function type_defined(x::Int)
     return x+3
