@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.5]
+
+### Fixed
+
+- Switch to JuliaC as trim fixes backend
+- Fix Julia 1.13 compatibility for ABI change
+
 ## [0.1.4]
 
 ### Fixed
