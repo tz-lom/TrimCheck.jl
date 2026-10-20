@@ -130,45 +130,64 @@ function Base.show_tuple_as_call(
     nothing
 end
 
-# Copy-pasted due to to too restrictive signature
-function verify_print_stmt(
-    io::IO,
-    codeinfo::CodeInfo,
-    sptypes::Vector{TrimVerifier.VarState},
-    stmtidx::Int,
-)
-    if codeinfo.slotnames !== nothing
-        io = IOContext(io, :SOURCE_SLOTNAMES => TrimVerifier.sourceinfo_slotnames(codeinfo))
-    end
-    print(
-        io,
-        TrimVerifier.mapssavaluetypes(codeinfo, sptypes, TrimVerifier.SSAValue(stmtidx)),
+# `verify_print_error` renders one verifier entry to a `ColorfullTypes` wrapper, which is an
+# ordinary `IO`. Whether `TrimVerifier`'s own printer accepts that differs between releases of the
+# `Compiler` package, so this is where the two are reconciled. `warn` selects the severity color.
+#
+# The test is for the binding itself rather than for `VERSION`: `TrimVerifier` comes from the
+# `Compiler` package, which can resolve to a different release than the running Julia's own
+# compiler, so the Julia version does not decide which printer is in scope.
+@static if isdefined(TrimVerifier, :mapssavaluetypes)
+    # Here the printers demand an `IOContext{IO}`, which a wrapper IO is not, so the two that would
+    # reject it are reproduced.
+    function verify_print_stmt(
+        io::IO,
+        codeinfo::CodeInfo,
+        sptypes::Vector{TrimVerifier.VarState},
+        stmtidx::Int,
     )
-end
+        if !isnothing(codeinfo.slotnames)
+            io = IOContext(io, :SOURCE_SLOTNAMES => TrimVerifier.sourceinfo_slotnames(codeinfo))
+        end
+        print(
+            io,
+            TrimVerifier.mapssavaluetypes(codeinfo, sptypes, TrimVerifier.SSAValue(stmtidx)),
+        )
+    end
 
-# Copy-pasted due to to too restrictive signature
-function verify_print_error(
-    io::IO,
-    desc::TrimVerifier.CallMissing,
-    parents::TrimVerifier.ParentMap,
-)
-    (; codeinst, codeinfo, sptypes, stmtidx, desc) = desc
-    frames = TrimVerifier.verify_create_stackframes(codeinst, stmtidx, parents)
-    print(io, desc, " from statement ")
-    verify_print_stmt(io, codeinfo, sptypes, stmtidx)
-    Base.show_backtrace(io, frames)
-    print(io, "\n\n")
-    nothing
-end
+    function verify_print_error(
+        io::IO,
+        desc::TrimVerifier.CallMissing,
+        parents::TrimVerifier.ParentMap,
+        warn::Bool,
+    )
+        (; codeinst, codeinfo, sptypes, stmtidx, desc) = desc
+        frames = TrimVerifier.verify_create_stackframes(codeinst, stmtidx, parents)
+        print(io, desc, " from statement ")
+        verify_print_stmt(io, codeinfo, sptypes, stmtidx)
+        Base.show_backtrace(io, frames)
+        print(io, "\n\n")
+        nothing
+    end
 
-# Copy-pasted due to to too restrictive signature
-function verify_print_error(
-    io::IO,
-    desc::TrimVerifier.CCallableMissing,
-    parents::TrimVerifier.ParentMap,
-)
-    print(io, desc.desc, " for ", desc.sig, " => ", desc.rt, "\n\n")
-    nothing
+    function verify_print_error(
+        io::IO,
+        desc::TrimVerifier.CCallableMissing,
+        parents::TrimVerifier.ParentMap,
+        warn::Bool,
+    )
+        print(io, desc.desc, " for ", desc.sig, " => ", desc.rt, "\n\n")
+        nothing
+    end
+else
+    # Here it takes any `IO` and colors by severity itself, so it is called directly. Reproducing it
+    # would reach for `mapssavaluetypes`, which this `Compiler` does not define.
+    verify_print_error(
+        io::IO,
+        desc::Union{TrimVerifier.CallMissing, TrimVerifier.CCallableMissing},
+        parents::TrimVerifier.ParentMap,
+        warn::Bool,
+    ) = TrimVerifier.verify_print_error(io, desc, parents, warn)
 end
 
 function Base.show(io::IO, tve::TrimVerificationErrors)
@@ -184,7 +203,7 @@ function Base.show(io::IO, tve::TrimVerificationErrors)
             continue
         end
         print(mio, warn ? "Verifier warning #" : "Verifier error #", no, ": ")
-        verify_print_error(mio, desc, tve.parents)
+        verify_print_error(mio, desc, tve.parents, warn)
     end
 
     println(mio, "Verifier errors: ", counts[1], ", warnings: ", counts[2])

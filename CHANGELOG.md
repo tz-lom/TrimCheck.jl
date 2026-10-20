@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- Showing a verification error when `Compiler` does not define `TrimVerifier.mapssavaluetypes` (Julia 1.13)
+
 ## [0.1.5]
 
 ### Fixed
